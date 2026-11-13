@@ -1,10 +1,15 @@
 package com.example.pr2pu5
 
+import android.content.Context
+import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -19,17 +24,22 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +48,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -47,6 +58,18 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.pr2pu5.ui.theme.Pr2Pu5Theme
+import kotlinx.coroutines.launch
+import retrofit2.Response
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.converter.scalars.ScalarsConverterFactory
+import retrofit2.http.Field
+import retrofit2.http.FormUrlEncoded
+import retrofit2.http.GET
+import retrofit2.http.POST
+import retrofit2.http.Query
+import java.sql.Date
+import java.sql.Time
 
 val listaHabitacionGlobal = mutableStateListOf(
     HabitacionItem(idHabitacion = "Hab-01", numeroHabitacion = "101", piso = "Piso 1", estado = "Libre"),
@@ -56,7 +79,22 @@ val listaPacienteGlobal = mutableStateListOf(
     PacienteItem(curp = "ABCD123456", fechaIngreso = "01/10/2026", fechaSalida = "05/10/2026", nombre = "Juan Pérez", domicilio = "Calle 1"),
     PacienteItem(curp = "EFGH789012", fechaIngreso = "02/10/2026", fechaSalida = "06/10/2026", nombre = "María López", domicilio = "Calle 2")
 )
+val listaHistorialGlobal = mutableStateListOf(
+    HistorialItem(cirugias = "Vesectomia", alergias = "Ninguna" , diagnosticos = "Calentura", fotoPaciente= "foto1.jpg" ,idHistorial = "" ),
+    HistorialItem(cirugias = "Vesectomia", alergias = "Peanut Butter" , diagnosticos = "Gripa", fotoPaciente = "foto1.jpg" , idHistorial = "")
+)
 
+data class ModeloUsuario(val idusuario: Int, val usuario: String, val contrasena: String, val nombre_completo:String, val rol: String, val correo: String)
+data class ModeloHistorialMedico(val idhistorial: Int, val fotopaciente: String, val alergias: String, val cirugias: String, val diagnosticosprevios: String, val cartillamedica: String, val curp: String, )
+
+data class ModeloPaciente(val curp: String, val fechaingreso: Date, val fechasalida: Date, val nombre: String , val domicilio: String)
+data class ModeloHabitacion(val idHabitacion: Int, val numero_Habitacion: Int, val piso: Int, val estado: Int, val curp: String )
+data class ModeloDoctor(val cedula: String, val nombre: String, val telefono: String, val especialidad: String, val horaentrada: Time, val horasalida: Time, val idusuario: Int)
+data class ModeloConsulta(val idconsulta: Int, val fechaConsulta: Date, val Descripcion: String, val Medicamento: String, val curp: String, val idusuario: Int)
+
+data class HistorialItem(val idHistorial: String, val cirugias: String, val diagnosticos: String, val alergias: String, val fotoPaciente: String)
+data class HabitacionItem(val idHabitacion: String, val numeroHabitacion: String, val piso: String, val estado: String)
+data class PacienteItem(val curp: String, val fechaIngreso: String, val fechaSalida: String, val nombre: String, val domicilio: String)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -72,33 +110,124 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+class Preferencias(context: Context) {
+    private val preferences = context.getSharedPreferences("app", Context.MODE_PRIVATE)
+    fun guardar(prop: String, value: String) {
+        preferences.edit()
+            .putString(prop, value)
+            .apply()
+    }
+    fun obtener(prop: String, def: String): String? {
+        return preferences.getString(prop, def)
+    }
 
+
+    fun remover(prop: String) {
+        preferences.edit()
+            .remove(prop)
+            .apply()
+    }
+}
 @Composable
 fun AppContent(modifier: Modifier = Modifier) {
+    val context = LocalContext.current //val es un constante
+    val preferencias = Preferencias(context)
+    var destination = "LoginContent" //var es un variable
+
+
+    if (preferencias.obtener("id", "") != "") { //if an id already exists in a session
+        destination = "MenuContent"                         //takes you straight to you Menu
+    }
+
+
+
     val navController = rememberNavController()
 
-    NavHost(navController = navController, startDestination = "LoginContent") {
+    NavHost(
+        navController = navController,
+        startDestination = destination,
+        modifier = modifier
+    ) {
         composable("LoginContent") { LoginContent(navController) }
         composable("MenuContent") { MenuContent(navController) }
         composable("PacienteContent") { PacienteContent(navController) }
         composable("PacienteFormContent") { PacienteFormContent(navController) }
         composable("HistorialContent") { HistorialContent(navController) }
+        composable("HistorialFormContent") { HistorialFormContent(navController) }
         composable("HabitacionContent") { HabitacionContent(navController) }
         composable("HabitacionFormContent") { HabitacionFormContent(navController) }
     }
 }
+interface ApiService {
+    @POST("iniciarSesion.php")
+    @FormUrlEncoded
+    suspend fun iniciarSesion(
+        @Field("usuario") usuario: String,
+        @Field("contrasena") contrasena: String
+    ): Response<String>
+
+    // C VAN TODOS LOS CAMPOS MENOS EL ID
+    @POST("manicomio.php?registrar")
+    @FormUrlEncoded
+    suspend fun registrarHistorialMedico(
+    @Field("fotopaciente") fotopaciente: String,
+    @Field("alergias") alergias: String,
+    @Field("cirugias") cirugias: String,
+    @Field("diagnosticosprevios") diagnositocsprevios: String,
+    @Field("cartillamedica") cartillamedica: String,
+    @Field("curp") curp: String,
+    ): Response<Unit>
+
+    // R BUSCAR
+    @GET("manicomio.php?buscar")
+    suspend fun buscarHistorialMedico(@Query("buscar") busqueda: String): List<ModeloHistorialMedico>
+
+    // U SOLO EN MODIFICAR, INGRESAMOS EL ID
+    @POST("manicomio.php?modificar")
+    @FormUrlEncoded
+    suspend fun modificarHistorialMedico(
+        @Field("idhistorial") idhistorial: Int,
+        @Field("fotopaciente") fotopaciente: String,
+        @Field("alergias") alergias: String,
+        @Field("cirugias") cirugias: String,
+        @Field("diagnosticosprevios") diagnositocsprevios: String,
+        @Field("cartillamedica") cartillamedica: String,
+        @Field("curp") curp: String,
+    ): Response<Unit>
+
+    // D elmiinar
+    @POST("manicomio.php?eliminar")
+    @FormUrlEncoded
+    suspend fun eliminarHistorialMedico(
+        @Field("idhistorial") idhistorial: Int
+    ): Response<Unit>
+}
+
+
+val retrofit = Retrofit.Builder()
+    .baseUrl("https://range-apartment-parker-validity.trycloudflare.com")
+    .addConverterFactory(ScalarsConverterFactory.create())
+    .addConverterFactory(GsonConverterFactory.create())
+    .build()
+
+
+val api = retrofit.create(ApiService::class.java)
+
+
+
+
 
 @Composable
-fun LoginContent(
-    navController: NavHostController,
-    modifier: Modifier = Modifier
-) {
+fun LoginContent(navController: NavHostController, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val preferencias = Preferencias(context)
+    val scope = rememberCoroutineScope ()
+
     var usuario by remember { mutableStateOf("") }
     var contrasena by remember { mutableStateOf("") }
 
     Box(
-        modifier = Modifier.fillMaxSize()
+        modifier = modifier.fillMaxSize()
     ) {
         Image(
             painter = painterResource(id = R.drawable.perfil),
@@ -154,12 +283,32 @@ fun LoginContent(
 
             Button(
                 onClick = {
-                    Toast.makeText(
-                        context,
-                        "Acceso concedido para: $usuario",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    navController.navigate("MenuContent")
+
+
+
+                scope.launch {
+                    try {
+                        val respuesta = api.iniciarSesion(usuario, contrasena)
+                        val id : String = respuesta.body().toString()
+
+                        if (id.toDoubleOrNull() != null) {
+                            preferencias.guardar("id", id)
+                            navController.navigate("MenuContent")
+                        }
+                        else {
+                            Toast.makeText(context, "Usuario y/o contraseña incorrecto(s).", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                        catch (e: Exception) {
+                            Log.e("API", "Error al iniciar sesión: ${e.message}")
+                        }
+                }
+
+                //
+
+
+
+
                 },
                 modifier = Modifier.align(Alignment.End)
             ) {
@@ -170,10 +319,9 @@ fun LoginContent(
 }
 
 @Composable
-fun MenuContent(
-    navController: NavHostController,
-    modifier: Modifier = Modifier
-) {
+fun MenuContent(navController: NavHostController, modifier: Modifier = Modifier) {
+   val preferencias = Preferencias(LocalContext.current)
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -194,9 +342,11 @@ fun MenuContent(
                 .fillMaxWidth()
                 .padding(bottom = 16.dp)
         ) {
-            Text(text = "Registro de Pacientes",
-            color = Color.Black,
-            fontWeight = FontWeight.Bold )
+            Text(
+                text = "Registro de Pacientes",
+                color = Color.Black,
+                fontWeight = FontWeight.Bold
+            )
         }
 
         Button(
@@ -214,11 +364,18 @@ fun MenuContent(
                 .fillMaxWidth()
                 .padding(bottom = 32.dp)
         ) {
-            Text(text = "Tabla Habitación")
+            Text(text = "Habitación")
         }
 
         Button(
-            onClick = { navController.navigate("LoginContent") },
+            onClick = {
+                preferencias.remover("id")
+
+
+
+                navController.navigate("LoginContent")
+                      },
+
             colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -227,101 +384,107 @@ fun MenuContent(
     }
 }
 
-data class PacienteItem(val curp: String, val fechaIngreso: String, val fechaSalida: String, val nombre: String, val domicilio: String)
+
 
 @Composable
-fun PacienteContent(
-    navController: NavHostController,
-    modifier: Modifier = Modifier
-) {
+fun PacienteContent(navController: NavHostController, modifier: Modifier = Modifier) {
+
+    val preferencias = Preferencias(LocalContext.current)
+
     val scrollState = rememberScrollState()
-    
+
     Box(
         modifier = modifier.fillMaxSize()
-    ){
+    ) {
         Image(
-            painter = painterResource(id = R.drawable.paciente_fondo),
+            painter = painterResource(id = R.drawable.backgroundimage),
             contentDescription = "Fondo de tabla de pacientes",
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop
         )
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.Start,
-        verticalArrangement = Arrangement.Top
-    ) {
-        Text(
-            text = "Registro de Pacientes",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = Color.Black,
-            modifier = Modifier.align(Alignment.CenterHorizontally)
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(
-            onClick = { navController.navigate("PacienteFormContent") },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Agregar Nuevo Paciente")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
         Column(
             modifier = Modifier
-                .weight(1f)
-                .horizontalScroll(scrollState)
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.Top
         ) {
-            Row {
-                Text("CURP", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
-                Text("Fecha de Ingreso", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
-                Text("Fecha de Salida", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
-                Text("Nombre", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
-                Text("Domicilio", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
-                Text("Acción", modifier = Modifier.width(100.dp), fontWeight = FontWeight.Bold)
-            }
-            Divider()
+            Text(
+                text = "Registro de Pacientes",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.Black,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
 
-            listaPacientesGlobal.forEachIndexed { index, item ->
-                val bgColor = if (index % 2 == 0) Color(0xFFF5F5F5) else Color.White
-                Row(
-                    modifier = Modifier
-                        .background(bgColor)
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(item.curp, modifier = Modifier.width(130.dp), color = Color.DarkGray)
-                    Text(item.fechaIngreso, modifier = Modifier.width(130.dp), color = Color.DarkGray)
-                    Text(item.fechaSalida, modifier = Modifier.width(130.dp), color = Color.DarkGray)
-                    Text(item.nombre, modifier = Modifier.width(130.dp), color = Color.DarkGray)
-                    Text(item.domicilio, modifier = Modifier.width(130.dp), color = Color.DarkGray)
-                    Button(
-                        onClick = { listaPacientes.removeAt(index) },
-                        modifier = Modifier.width(100.dp)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = { navController.navigate("PacienteFormContent") },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Agregar Nuevo Paciente")
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .horizontalScroll(scrollState)
+            ) {
+                Row {
+                    Text("CURP", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
+                    Text("Fecha de Ingreso", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
+                    Text("Fecha de Salida", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
+                    Text("Nombre", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
+                    Text("Domicilio", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
+                    Text("Acción", modifier = Modifier.width(100.dp), fontWeight = FontWeight.Bold)
+                }
+                Divider()
+
+                listaPacienteGlobal.forEachIndexed { index, item ->
+                    val bgColor = if (index % 2 == 0) Color(0xFFF5F5F5) else Color.White
+                    Row(
+                        modifier = Modifier
+                            .background(bgColor)
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Borrar")
+                        Text(item.curp, modifier = Modifier.width(130.dp), color = Color.DarkGray)
+                        Text(item.fechaIngreso, modifier = Modifier.width(130.dp), color = Color.DarkGray)
+                        Text(item.fechaSalida, modifier = Modifier.width(130.dp), color = Color.DarkGray)
+                        Text(item.nombre, modifier = Modifier.width(130.dp), color = Color.DarkGray)
+                        Text(item.domicilio, modifier = Modifier.width(130.dp), color = Color.DarkGray)
+                        Button(
+                            onClick = { listaPacienteGlobal.removeAt(index) },
+                            modifier = Modifier.width(100.dp)
+                        ) {
+                            Text("Borrar")
+                        }
                     }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
 
-        Button(
-            onClick = { navController.navigate("MenuContent") },
-            colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Regresar al Menú")
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = { navController.navigate("MenuContent") },
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Regresar al Menú")
+            }
         }
     }
 }
 
+
+
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PacienteFormContent(
     navController: NavHostController,
@@ -333,6 +496,7 @@ fun PacienteFormContent(
     var fechaSalida by remember { mutableStateOf("") }
     var nombre by remember { mutableStateOf("") }
     var domicilio by remember { mutableStateOf("") }
+
 
     Column(
         modifier = modifier
@@ -402,7 +566,7 @@ fun PacienteFormContent(
 
         Button(
             onClick = {
-                if (curp.isNotBlank() && nombre.isNotBlank()) {
+                if  (curp.isNotBlank() && nombre.isNotBlank()) {
                     listaPacienteGlobal.add(
                         PacienteItem(
                             curp = curp,
@@ -412,7 +576,8 @@ fun PacienteFormContent(
                             domicilio = domicilio
                         )
                     )
-                    Toast.makeText(context, "Paciente guardado con éxito", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Paciente guardado con éxito", Toast.LENGTH_SHORT)
+                        .show()
                     navController.popBackStack()
                 } else {
                     Toast.makeText(context, "Completa los campos obligatorios", Toast.LENGTH_SHORT).show()
@@ -435,88 +600,135 @@ fun PacienteFormContent(
     }
 }
 
-data class HistorialItem(val idHistorial: String, val fotoPaciente: String, val alergias: String, val cirugias: String, val diagnosticos: String)
+
 
 @Composable
 fun HistorialContent(
     navController: NavHostController,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+
 ) {
     val scrollState = rememberScrollState()
-    val listaHistorial = remember {
-        mutableStateListOf(
-            HistorialItem(idHistorial = "H-001", fotoPaciente = "foto1.jpg", alergias = "Ninguna", cirugias = "Apendicitis", diagnosticos = "Estable"),
-            HistorialItem(idHistorial = "H-002", fotoPaciente = "foto2.jpg", alergias = "Penicilina", cirugias = "Ninguna", diagnosticos = "En observación")
-        )
+    val coroutineScope = rememberCoroutineScope()
+
+    // State to hold the list fetched from the database
+    var listaHistorial by remember { mutableStateOf<List<ModeloHistorialMedico>>(emptyList()) }
+
+    // Fetch data automatically when the screen loads
+    LaunchedEffect(Unit) {
+        coroutineScope.launch {
+            try {
+                // Pass an empty string to fetch all or matching records
+                listaHistorial = api.buscarHistorialMedico("")
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.Start,
-        verticalArrangement = Arrangement.Top
+    Box(
+        modifier = modifier.fillMaxSize()
     ) {
-        Text(
-            text = "Tabla: Historial Médico",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.ExtraBold,
-            modifier = Modifier.align(Alignment.CenterHorizontally)
+        Image(
+            painter = painterResource(id = R.drawable.derrickroseimage),
+            contentDescription = "Fondo de historial médico",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
         )
-
-        Spacer(modifier = Modifier.height(16.dp))
 
         Column(
             modifier = Modifier
-                .weight(1f)
-                .horizontalScroll(scrollState)
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.Top
         ) {
-            Row {
-                Text("Historial Medico", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
-                Text("Foto del Paciente", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
-                Text("Alergias", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
-                Text("Cirugias", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
-                Text("Diagnosticos", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
-                Text("Acción", modifier = Modifier.width(100.dp), fontWeight = FontWeight.Bold)
-            }
-            Divider()
+            Text(
+                text = "Tabla: Historial Médico",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
 
-            listaHistorial.forEachIndexed { index, item ->
-                val bgColor = if (index % 2 == 0) Color(0xFFF5F5F5) else Color.White
-                Row(
-                    modifier = Modifier
-                        .background(bgColor)
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(item.idHistorial, modifier = Modifier.width(130.dp))
-                    Text(item.fotoPaciente, modifier = Modifier.width(130.dp))
-                    Text(item.alergias, modifier = Modifier.width(130.dp))
-                    Text(item.cirugias, modifier = Modifier.width(130.dp))
-                    Text(item.diagnosticos, modifier = Modifier.width(130.dp))
-                    Button(
-                        onClick = { listaHistorial.removeAt(index) },
-                        modifier = Modifier.width(100.dp)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = { navController.navigate("HistorialFormContent") },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Agregar Nuevo Historial")
+            }
+
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .horizontalScroll(scrollState)
+            ) {
+                Row {
+                    Text("Historial Medico", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Foto del Paciente", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Alergias", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Cirugias", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Diagnosticos", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Acción", modifier = Modifier.width(100.dp), fontWeight = FontWeight.Bold, color = Color.White)
+                }
+                Divider(color = Color.White)
+
+                listaHistorial.forEachIndexed { index, item ->
+                    val bgColor = if (index % 2 == 0) Color(0xAAFFFFFF).copy(alpha = 0.8f) else Color(0xCCFFFFFF)
+                    Row(
+                        modifier = Modifier
+                            .background(bgColor)
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Borrar")
+                        Text(item.idhistorial.toString(), modifier = Modifier.width(130.dp), color = Color.DarkGray)
+                        Text(item.fotopaciente, modifier = Modifier.width(130.dp), color = Color.DarkGray)
+                        Text(item.alergias, modifier = Modifier.width(130.dp), color = Color.DarkGray)
+                        Text(item.cirugias, modifier = Modifier.width(130.dp), color = Color.DarkGray)
+                        Text(item.diagnosticosprevios, modifier = Modifier.width(130.dp), color = Color.DarkGray)
+                        Button(
+                            onClick = {
+                                coroutineScope.launch {
+                                    try {
+                                        // Call your API delete method using the item's ID
+                                        val response = api.eliminarHistorialMedico(item.idhistorial)
+                                        if (response.isSuccessful) {
+                                            // Refresh the table data from the database
+                                            listaHistorial = api.buscarHistorialMedico("")
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                }
+                            },
+                            modifier = Modifier.width(100.dp)
+                        ) {
+                            Text("Borrar")
+                        }
                     }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-        Button(
-            onClick = { navController.navigate("MenuContent") },
-            colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Regresar al Menú")
+            Button(
+                onClick = { navController.navigate("MenuContent") },
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Regresar al Menú")
+            }
         }
     }
 }
 
-data class HabitacionItem(val idHabitacion: String, val numeroHabitacion: String, val piso: String, val estado: String)
+
+
+
+
 
 @Composable
 fun HabitacionContent(
@@ -525,79 +737,247 @@ fun HabitacionContent(
 ) {
     val scrollState = rememberScrollState()
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.Start,
-        verticalArrangement = Arrangement.Top
+    Box(
+        modifier = modifier.fillMaxSize()
     ) {
-        Text(
-            text = "Tabla: Habitación",
-            fontSize = 20.sp,
-            fontWeight = FontWeight.ExtraBold,
-            modifier = Modifier.align(Alignment.CenterHorizontally)
+        Image(
+            painter = painterResource(id = R.drawable.juanjo),
+            contentDescription = "Fondo de tabla de habitaciones",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
         )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(
-            onClick = { navController.navigate("HabitacionFormContent") },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Agregar Nueva Habitación")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
 
         Column(
             modifier = Modifier
-                .weight(1f)
-                .horizontalScroll(scrollState)
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.Top
         ) {
-            Row {
-                Text("id_habitacion", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
-                Text("numero_hab", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
-                Text("piso", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
-                Text("estado", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
-                Text("Acción", modifier = Modifier.width(100.dp), fontWeight = FontWeight.Bold)
-            }
-            Divider()
+            Text(
+                text = "Tabla: Habitación",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
 
-            listaHabitacionGlobal.forEachIndexed { index, item ->
-                val bgColor = if (index % 2 == 0) Color(0xFFF5F5F5) else Color.White
-                Row(
-                    modifier = Modifier
-                        .background(bgColor)
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(item.idHabitacion, modifier = Modifier.width(130.dp))
-                    Text(item.numeroHabitacion, modifier = Modifier.width(130.dp))
-                    Text(item.piso, modifier = Modifier.width(130.dp))
-                    Text(item.estado, modifier = Modifier.width(130.dp))
-                    Button(
-                        onClick = { listaHabitacionGlobal.removeAt(index) },
-                        modifier = Modifier.width(100.dp)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = { navController.navigate("HabitacionFormContent") },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Agregar Nueva Habitación")
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .horizontalScroll(scrollState)
+            ) {
+                Row {
+                    Text("ID Habitacion", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Numero Habitacion", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Piso", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Estado", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("Acción", modifier = Modifier.width(100.dp), fontWeight = FontWeight.Bold, color = Color.White)
+                }
+                Divider(color = Color.White)
+
+                listaHabitacionGlobal.forEachIndexed { index, item ->
+                    val bgColor = if (index % 2 == 0) Color(0xAAFFFFFF) else Color(0xCCFFFFFF)
+                    Row(
+                        modifier = Modifier
+                            .background(bgColor)
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Borrar")
+                        Text(item.idHabitacion, modifier = Modifier.width(130.dp), color = Color.DarkGray)
+                        Text(item.numeroHabitacion, modifier = Modifier.width(130.dp), color = Color.DarkGray)
+                        Text(item.piso, modifier = Modifier.width(130.dp), color = Color.DarkGray)
+                        Text(item.estado, modifier = Modifier.width(130.dp), color = Color.DarkGray)
+                        Button(
+                            onClick = { listaHabitacionGlobal.removeAt(index) },
+                            modifier = Modifier.width(100.dp)
+                        ) {
+                            Text("Borrar")
+                        }
                     }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-        Button(
-            onClick = { navController.navigate("MenuContent") },
-            colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Regresar al Menú")
+            Button(
+                onClick = { navController.navigate("MenuContent") },
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Regresar al Menú")
+            }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HistorialFormContent(
+    navController: NavHostController,
+    modifier: Modifier = Modifier
+) {
+
+    val coroutineScope = rememberCoroutineScope()
+
+    val context = LocalContext.current
+    var idHistorial by remember { mutableStateOf("") }
+    var alergias by remember { mutableStateOf("") }
+    var cirugias by remember { mutableStateOf("") }
+    var diagnosticos by remember { mutableStateOf("") }
+
+    var imageUri by remember { mutableStateOf<Uri?>(null) }
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        imageUri = uri
+        // TODO: Assign the uri string to your state/model variable if needed
+    }
+    Box(
+        modifier = modifier.fillMaxSize()
+    ) {
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "Formulario de Historial",
+                fontSize = 30.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.Black,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(bottom = 24.dp)
+            )
+
+            Text(text = "CURP:")
+            TextField(
+                value = idHistorial,
+                onValueChange = { idHistorial = it },
+                placeholder = { Text("Ej. H-1234") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            )
+            Text(text = "Alergias:")
+            TextField(
+                value = alergias,
+                onValueChange = { alergias = it },
+                placeholder = { Text("Ej. Pollen") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
+            Text(text = "Cirugias:")
+            TextField(
+                value = cirugias,
+                onValueChange = { cirugias = it },
+                placeholder = { Text("Ej. Vesectomia") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            )
+            Text(text = "Diagnosticos:")
+            TextField(
+                value = diagnosticos,
+                onValueChange = { diagnosticos = it },
+                placeholder = { Text("Ej. Daños en las cavidades oculares") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            )
+
+
+
+            // Below your Text(text = "Imagen Nueva:")
+            Button(
+                onClick = {
+                    // Filter for images; you can use "*/*" for any file type
+                    launcher.launch("image/*")
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            ) {
+                Text(text = if (imageUri == null) "Seleccionar Archivo" else "Archivo Seleccionado ✓")
+            }
+
+// Optional: Display the file path or a small preview if selected
+            if (imageUri != null) {
+                Text(
+                    text = "URI: $imageUri",
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = {
+                    if (idHistorial.isNotBlank() && alergias.isNotBlank()) {
+                        coroutineScope.launch {
+                            try {
+                                // Call your API to insert into phpMyAdmin
+                                val response = api.registrarHistorialMedico(
+                                    fotopaciente = if (imageUri != null) imageUri.toString() else "foto1.jpg",
+                                    alergias = alergias,
+                                    cirugias = cirugias,
+                                    diagnositocsprevios = diagnosticos,
+                                    cartillamedica = "Completa", // or map to a form field if you have one
+                                    curp = idHistorial // using your idHistorial field for curp based on your form text
+                                )
+
+                                if (response.isSuccessful) {
+                                    Toast.makeText(context, "Guardado con éxito en la Base de Datos", Toast.LENGTH_SHORT).show()
+                                    navController.popBackStack()
+                                } else {
+                                    Toast.makeText(context, "Error al guardar en el servidor", Toast.LENGTH_SHORT).show()
+                                }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                                Toast.makeText(context, "Error de conexión: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } else {
+                        Toast.makeText(context, "Falta uno o mas campos para llenar", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Yellow)
+            ) {
+                Text("Guardar Paciente")
+            }
+
+            Button(
+                onClick = { navController.navigate("MenuContent") },
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Blue),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Regresar al Menú")
+            }
+        }
+    }
+}
+
+annotation class composable
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HabitacionFormContent(
     navController: NavHostController,
@@ -609,95 +989,108 @@ fun HabitacionFormContent(
     var piso by remember { mutableStateOf("") }
     var estado by remember { mutableStateOf("") }
 
-    Column(
+    val scrollState = rememberScrollState()
+
+    Box(
         modifier = modifier
             .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.Start,
-        verticalArrangement = Arrangement.Center
+            .background(Color.White)
+            .padding(24.dp)
     ) {
-        Text(
-            text = "Formulario: Habitación",
-            fontSize = 24.sp,
-            fontWeight = FontWeight.ExtraBold,
+        Column(
             modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .padding(bottom = 24.dp)
-        )
+                .fillMaxSize()
+                .verticalScroll(scrollState),
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "Formulario: Habitación",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.Black,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(bottom = 24.dp)
+            )
 
-        Text(text = "ID Habitación:")
-        TextField(
-            value = idHabitacion,
-            onValueChange = { idHabitacion = it },
-            placeholder = { Text("Ej. Hab-03") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 8.dp)
-        )
+            Text(text = "ID Habitación:", color = Color.Black)
+            TextField(
+                value = idHabitacion,
+                onValueChange = { idHabitacion = it },
+                placeholder = { Text("Ej. Hab-03") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            )
 
-        Text(text = "Número de Habitación:")
-        TextField(
-            value = numeroHabitacion,
-            onValueChange = { numeroHabitacion = it },
-            placeholder = { Text("Ej. 103") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 8.dp)
-        )
+            Text(text = "Número de Habitación:", color = Color.Black)
+            TextField(
+                value = numeroHabitacion,
+                onValueChange = { numeroHabitacion = it },
+                placeholder = { Text("Ej. 103") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            )
 
-        Text(text = "Piso:")
-        TextField(
-            value = piso,
-            onValueChange = { piso = it },
-            placeholder = { Text("Ej. Piso 2") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 8.dp)
-        )
+            Text(text = "Piso:", color = Color.Black)
+            TextField(
+                value = piso,
+                onValueChange = { piso = it },
+                placeholder = { Text("Ej. Piso 2") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            )
 
-        Text(text = "Estado:")
-        TextField(
-            value = estado,
-            onValueChange = { estado = it },
-            placeholder = { Text("Ej. Libre u Ocupada") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp)
-        )
+            Text(text = "Estado:", color = Color.Black)
+            TextField(
+                value = estado,
+                onValueChange = { estado = it },
+                placeholder = { Text("Ej. Libre u Ocupada") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
 
-        Button(
-            onClick = {
-                if (idHabitacion.isNotBlank() && numeroHabitacion.isNotBlank()) {
-                    listaHabitacionGlobal.add(
-                        HabitacionItem(
-                            idHabitacion = idHabitacion,
-                            numeroHabitacion = numeroHabitacion,
-                            piso = piso,
-                            estado = estado
+            )
+
+            Button(
+                onClick = {
+                    if (idHabitacion.isNotBlank() && numeroHabitacion.isNotBlank()) {
+                        listaHabitacionGlobal.add(
+                            HabitacionItem(
+                                idHabitacion = idHabitacion,
+                                numeroHabitacion = numeroHabitacion,
+                                piso = piso,
+                                estado = estado
+                            )
                         )
-                    )
-                    Toast.makeText(context, "Habitación guardada con éxito", Toast.LENGTH_SHORT).show()
-                    navController.popBackStack()
-                } else {
-                    Toast.makeText(context, "Completa los campos obligatorios", Toast.LENGTH_SHORT).show()
-                }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Guardar Habitación")
-        }
+                        Toast.makeText(context, "Habitación guardada con éxito", Toast.LENGTH_SHORT).show()
+                        navController.popBackStack()
+                    } else {
+                        Toast.makeText(context, "Completa los campos obligatorios", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Guardar Habitación")
+            }
 
-        Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-        Button(
-            onClick = { navController.popBackStack() },
-            colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Cancelar")
+            Button(
+                onClick = { navController.popBackStack() },
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Cancelar")
+            }
         }
     }
 }
+
+
 
 @Preview(showBackground = true)
 @Composable
