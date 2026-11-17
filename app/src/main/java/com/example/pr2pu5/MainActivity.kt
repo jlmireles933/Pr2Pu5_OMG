@@ -71,6 +71,11 @@ import retrofit2.http.Query
 import java.sql.Date
 import java.sql.Time
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+
 val listaHabitacionGlobal = mutableStateListOf(
     HabitacionItem(idHabitacion = "Hab-01", numeroHabitacion = "101", piso = "Piso 1", estado = "Libre"),
     HabitacionItem(idHabitacion = "Hab-02", numeroHabitacion = "102", piso = "Piso 1", estado = "Ocupada")
@@ -132,10 +137,10 @@ class Preferencias(context: Context) {
 fun AppContent(modifier: Modifier = Modifier) {
     val context = LocalContext.current //val es un constante
     val preferencias = Preferencias(context)
-    var destination = "LoginContent" //var es un variable
+    var destination = "PacienteContent" //var es un variable
 
 
-    if (preferencias.obtener("id", "") != "") { //if an id already exists in a session
+    if (preferencias.obtener("username", "") != "") { //if an id already exists in a session
         destination = "MenuContent"                         //takes you straight to you Menu
     }
 
@@ -159,10 +164,10 @@ fun AppContent(modifier: Modifier = Modifier) {
     }
 }
 interface ApiService {
-    @POST("iniciarSesion.php")
     @FormUrlEncoded
+    @POST("iniciarSesion.php")
     suspend fun iniciarSesion(
-        @Field("usuario") usuario: String,
+        @Field("username") username: String,
         @Field("contrasena") contrasena: String
     ): Response<String>
 
@@ -173,7 +178,7 @@ interface ApiService {
     @Field("fotopaciente") fotopaciente: String,
     @Field("alergias") alergias: String,
     @Field("cirugias") cirugias: String,
-    @Field("diagnosticosprevios") diagnositocsprevios: String,
+    @Field("diagnosticosprevios") diagnosticosprevios: String,
     @Field("cartillamedica") cartillamedica: String,
     @Field("curp") curp: String,
     ): Response<Unit>
@@ -190,7 +195,7 @@ interface ApiService {
         @Field("fotopaciente") fotopaciente: String,
         @Field("alergias") alergias: String,
         @Field("cirugias") cirugias: String,
-        @Field("diagnosticosprevios") diagnositocsprevios: String,
+        @Field("diagnosticosprevios") diagnosticosprevios: String,
         @Field("cartillamedica") cartillamedica: String,
         @Field("curp") curp: String,
     ): Response<Unit>
@@ -205,7 +210,7 @@ interface ApiService {
 
 
 val retrofit = Retrofit.Builder()
-    .baseUrl("https://range-apartment-parker-validity.trycloudflare.com")
+    .baseUrl("https://borders-annotation-customized-witness.trycloudflare.com/AW/app/api/")
     .addConverterFactory(ScalarsConverterFactory.create())
     .addConverterFactory(GsonConverterFactory.create())
     .build()
@@ -223,7 +228,7 @@ fun LoginContent(navController: NavHostController, modifier: Modifier = Modifier
     val preferencias = Preferencias(context)
     val scope = rememberCoroutineScope ()
 
-    var usuario by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
     var contrasena by remember { mutableStateOf("") }
 
     Box(
@@ -259,8 +264,8 @@ fun LoginContent(navController: NavHostController, modifier: Modifier = Modifier
                 modifier = Modifier.padding(top = 16.dp)
             )
             TextField(
-                value = usuario,
-                onValueChange = { usuario = it },
+                value = username,
+                onValueChange = { username = it },
                 placeholder = { Text("Ingresa tu Usuario") },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -283,16 +288,14 @@ fun LoginContent(navController: NavHostController, modifier: Modifier = Modifier
 
             Button(
                 onClick = {
-
-
-
                 scope.launch {
                     try {
-                        val respuesta = api.iniciarSesion(usuario, contrasena)
+                        val respuesta = api.iniciarSesion(username, contrasena)
                         val id : String = respuesta.body().toString()
-
+                        Toast.makeText(context, "Respuesta: '$id'", Toast.LENGTH_LONG).show()
+                        username = id
                         if (id.toDoubleOrNull() != null) {
-                            preferencias.guardar("id", id)
+                            preferencias.guardar("username", username)
                             navController.navigate("MenuContent")
                         }
                         else {
@@ -303,12 +306,6 @@ fun LoginContent(navController: NavHostController, modifier: Modifier = Modifier
                             Log.e("API", "Error al iniciar sesión: ${e.message}")
                         }
                 }
-
-                //
-
-
-
-
                 },
                 modifier = Modifier.align(Alignment.End)
             ) {
@@ -384,7 +381,380 @@ fun MenuContent(navController: NavHostController, modifier: Modifier = Modifier)
     }
 }
 
+@Composable
+fun HistorialContent(
+    navController: NavHostController,
+    modifier: Modifier = Modifier
+) {
+    // AI code added: Context for showing Toasts
+    val context = LocalContext.current
+    val scrollState = rememberScrollState()
+    // AI code added: Vertical scroll state for multi-row database lists
+    val verticalScrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
+    var historialAEditar by remember { mutableStateOf<ModeloHistorialMedico?>(null) } //AI
+    // State to hold the list fetched from the database
+    var listaHistorial by remember { mutableStateOf<List<ModeloHistorialMedico>>(emptyList()) }
 
+    // Fetch data automatically when the screen loads
+    LaunchedEffect(Unit) {
+        coroutineScope.launch {
+            try {
+                listaHistorial = api.buscarHistorialMedico("")
+            } catch (e: Exception) {
+                // AI code added: Error logging matching your pattern
+                Log.e("API", "Error al cargar el historial: ${e.message}")
+            }
+        }
+    }
+
+    Box(
+        modifier = modifier.fillMaxSize()
+    ) {
+        Image(
+            painter = painterResource(id = R.drawable.derrickroseimage),
+            contentDescription = "Fondo de historial médico",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.Top
+        ) {
+            Text(
+                text = "Tabla: Historial Médico",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = { navController.navigate("HistorialFormContent") },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Agregar Nuevo Historial")
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // AI code added: Translucent background container box for table readability over background image
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .background(Color(0x88000000))
+                    .padding(8.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(verticalScrollState) // AI code added: enable vertical scrolling
+                        .horizontalScroll(scrollState)
+                ) {
+                    // Table Header
+                    Row(
+                        modifier = Modifier.padding(bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("ID", modifier = Modifier.width(60.dp), fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("Foto", modifier = Modifier.width(110.dp), fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("Alergias", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("Cirugias", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("Diagnósticos", modifier = Modifier.width(150.dp), fontWeight = FontWeight.Bold, color = Color.White)
+                        Text("Acción", modifier = Modifier.width(196.dp), fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                    Divider(color = Color.White)
+
+                    // Table Rows mapped dynamically from phpMyAdmin database
+                    listaHistorial.forEachIndexed { index, item ->
+                        val bgColor = if (index % 2 == 0) Color(0xEEFFFFFF) else Color(0xDDFFFFFF)
+                        Row(
+                            modifier = Modifier
+                                .background(bgColor)
+                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(item.idhistorial.toString(), modifier = Modifier.width(60.dp), color = Color.DarkGray)
+                            Text(item.fotopaciente, modifier = Modifier.width(110.dp), color = Color.DarkGray)
+                            Text(item.alergias, modifier = Modifier.width(130.dp), color = Color.DarkGray)
+                            Text(item.cirugias, modifier = Modifier.width(130.dp), color = Color.DarkGray)
+                            Text(item.diagnosticosprevios, modifier = Modifier.width(150.dp), color = Color.DarkGray)
+
+                            Button(
+                                onClick = {
+                                    historialAEditar = item
+                                },
+                                modifier = Modifier.width(90.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1976D2)),
+                                contentPadding = PaddingValues(horizontal = 4.dp)
+                                ){
+                                Text("Editar", color = Color.White, fontSize = 12.sp)
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+
+                            Button(
+                                onClick = {
+                                    // AI code added: Coroutine delete action using your Toast and Logcat structure
+                                    coroutineScope.launch {
+                                        try {
+                                            val response = api.eliminarHistorialMedico(item.idhistorial)
+                                            if (response.isSuccessful) {
+                                                Toast.makeText(context, "Historial eliminado con éxito.", Toast.LENGTH_SHORT).show()
+                                                // Refresh list from database
+                                                listaHistorial = api.buscarHistorialMedico("")
+                                            } else {
+                                                Toast.makeText(context, "Error al eliminar de la base de datos.", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } catch (e: Exception) {
+                                            Log.e("API", "Error al eliminar el historial: ${e.message}")
+                                            Toast.makeText(context, "Excepción: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.width(100.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                            ) {
+                                Text("Borrar", color = Color.White)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = { navController.navigate("MenuContent") },
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Regresar al Menú")
+            }
+        }
+        historialAEditar?.let { registro ->
+            var fotopaciente by remember { mutableStateOf(registro.fotopaciente) }
+            var alergias by remember { mutableStateOf(registro.alergias) }
+            var cirugias by remember { mutableStateOf(registro.cirugias) }
+            var diagnosticosprevios by remember { mutableStateOf(registro.diagnosticosprevios) }
+            var cartillamedica by remember { mutableStateOf(registro.cartillamedica) }
+            var curp by remember { mutableStateOf(registro.curp) }
+
+            AlertDialog(
+                onDismissRequest = { historialAEditar = null },
+                title = { Text("Editar Historial #${registro.idhistorial}") },
+                text = {
+                    Column(
+                        modifier = Modifier.verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(value = fotopaciente, onValueChange = { fotopaciente = it }, label = { Text("Foto Paciente") })
+                        OutlinedTextField(value = alergias, onValueChange = { alergias = it }, label = { Text("Alergias") })
+                        OutlinedTextField(value = cirugias, onValueChange = { cirugias = it }, label = { Text("Cirugías") })
+                        OutlinedTextField(value = diagnosticosprevios, onValueChange = { diagnosticosprevios = it }, label = { Text("Diagnósticos Previos") })
+                        OutlinedTextField(value = cartillamedica, onValueChange = { cartillamedica = it }, label = { Text("Cartilla Médica") })
+                        OutlinedTextField(value = curp, onValueChange = { curp = it }, label = { Text("CURP") })
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                try {
+                                    val response = api.modificarHistorialMedico(
+                                        idhistorial = registro.idhistorial,
+                                        fotopaciente = fotopaciente,
+                                        alergias = alergias,
+                                        cirugias = cirugias,
+                                        diagnosticosprevios = diagnosticosprevios,
+                                        cartillamedica = cartillamedica,
+                                        curp = curp
+                                    )
+                                    if (response.isSuccessful) {
+                                        Toast.makeText(context, "Historial actualizado.", Toast.LENGTH_SHORT).show()
+                                        listaHistorial = api.buscarHistorialMedico("")
+                                        historialAEditar = null
+                                    } else {
+                                        Toast.makeText(context, "Error al actualizar.", Toast.LENGTH_SHORT).show()
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("API", "Error al editar: ${e.message}")
+                                    Toast.makeText(context, "Excepción: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    ) {
+                        Text("Guardar")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { historialAEditar = null }) {
+                        Text("Cancelar")
+                    }
+                }
+            )
+        }    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HistorialFormContent(
+    navController: NavHostController,
+    modifier: Modifier = Modifier
+) {
+
+    val coroutineScope = rememberCoroutineScope()
+
+    val context = LocalContext.current
+    var idHistorial by remember { mutableStateOf("") }
+    var alergias by remember { mutableStateOf("") }
+    var cirugias by remember { mutableStateOf("") }
+    var diagnosticos by remember { mutableStateOf("") }
+
+    var imageUri by remember { mutableStateOf<Uri?>(null) }
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        imageUri = uri
+        // TODO: Assign the uri string to your state/model variable if needed
+    }
+    Box(
+        modifier = modifier.fillMaxSize()
+    ) {
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.Start,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "Formulario de Historial",
+                fontSize = 30.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.Black,
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(bottom = 24.dp)
+            )
+
+            Text(text = "CURP:")
+            TextField(
+                value = idHistorial,
+                onValueChange = { idHistorial = it },
+                placeholder = { Text("Ej. H-1234") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            )
+            Text(text = "Alergias:")
+            TextField(
+                value = alergias,
+                onValueChange = { alergias = it },
+                placeholder = { Text("Ej. Pollen") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
+            Text(text = "Cirugias:")
+            TextField(
+                value = cirugias,
+                onValueChange = { cirugias = it },
+                placeholder = { Text("Ej. Vesectomia") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            )
+            Text(text = "Diagnosticos:")
+            TextField(
+                value = diagnosticos,
+                onValueChange = { diagnosticos = it },
+                placeholder = { Text("Ej. Daños en las cavidades oculares") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+            )
+
+
+
+            // Below your Text(text = "Imagen Nueva:")
+            Button(
+                onClick = {
+                    // Filter for images; you can use "*/*" for any file type
+                    launcher.launch("image/*")
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            ) {
+                Text(text = if (imageUri == null) "Seleccionar Archivo" else "Archivo Seleccionado ✓")
+            }
+
+// Optional: Display the file path or a small preview if selected
+            if (imageUri != null) {
+                Text(
+                    text = "URI: $imageUri",
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = {
+                    if (idHistorial.isNotBlank() && alergias.isNotBlank()) {
+                        coroutineScope.launch {
+                            try {
+                                // Call your API to insert into phpMyAdmin
+                                val response = api.registrarHistorialMedico(
+                                    fotopaciente = if (imageUri != null) imageUri.toString() else "foto1.jpg",
+                                    alergias = alergias,
+                                    cirugias = cirugias,
+                                    diagnosticosprevios = diagnosticos,
+                                    cartillamedica = "Completa", // or map to a form field if you have one
+                                    curp = idHistorial // using your idHistorial field for curp based on your form text
+                                )
+
+                                if (response.isSuccessful) {
+                                    Toast.makeText(context, "Guardado con éxito en la Base de Datos", Toast.LENGTH_SHORT).show()
+                                    navController.popBackStack()
+                                } else {
+                                    Toast.makeText(context, "Error al guardar en el servidor", Toast.LENGTH_SHORT).show()
+                                }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                                Toast.makeText(context, "Error de conexión: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } else {
+                        Toast.makeText(context, "Falta uno o mas campos para llenar", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Yellow)
+            ) {
+                Text("Guardar Paciente")
+            }
+
+            Button(
+                onClick = { navController.navigate("MenuContent") },
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Blue),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Regresar al Menú")
+            }
+        }
+    }
+}
 
 @Composable
 fun PacienteContent(navController: NavHostController, modifier: Modifier = Modifier) {
@@ -440,7 +810,7 @@ fun PacienteContent(navController: NavHostController, modifier: Modifier = Modif
                     Text("Fecha de Salida", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
                     Text("Nombre", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
                     Text("Domicilio", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold)
-                    Text("Acción", modifier = Modifier.width(100.dp), fontWeight = FontWeight.Bold)
+                    Text("Acción", modifier = Modifier.width(1.dp), fontWeight = FontWeight.Bold)
                 }
                 Divider()
 
@@ -480,9 +850,6 @@ fun PacienteContent(navController: NavHostController, modifier: Modifier = Modif
         }
     }
 }
-
-
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -600,136 +967,6 @@ fun PacienteFormContent(
     }
 }
 
-
-
-@Composable
-fun HistorialContent(
-    navController: NavHostController,
-    modifier: Modifier = Modifier,
-
-) {
-    val scrollState = rememberScrollState()
-    val coroutineScope = rememberCoroutineScope()
-
-    // State to hold the list fetched from the database
-    var listaHistorial by remember { mutableStateOf<List<ModeloHistorialMedico>>(emptyList()) }
-
-    // Fetch data automatically when the screen loads
-    LaunchedEffect(Unit) {
-        coroutineScope.launch {
-            try {
-                // Pass an empty string to fetch all or matching records
-                listaHistorial = api.buscarHistorialMedico("")
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-
-    Box(
-        modifier = modifier.fillMaxSize()
-    ) {
-        Image(
-            painter = painterResource(id = R.drawable.derrickroseimage),
-            contentDescription = "Fondo de historial médico",
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
-        )
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.Start,
-            verticalArrangement = Arrangement.Top
-        ) {
-            Text(
-                text = "Tabla: Historial Médico",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = Color.White,
-                modifier = Modifier.align(Alignment.CenterHorizontally)
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(
-                onClick = { navController.navigate("HistorialFormContent") },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Agregar Nuevo Historial")
-            }
-
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .horizontalScroll(scrollState)
-            ) {
-                Row {
-                    Text("Historial Medico", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold, color = Color.White)
-                    Text("Foto del Paciente", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold, color = Color.White)
-                    Text("Alergias", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold, color = Color.White)
-                    Text("Cirugias", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold, color = Color.White)
-                    Text("Diagnosticos", modifier = Modifier.width(130.dp), fontWeight = FontWeight.Bold, color = Color.White)
-                    Text("Acción", modifier = Modifier.width(100.dp), fontWeight = FontWeight.Bold, color = Color.White)
-                }
-                Divider(color = Color.White)
-
-                listaHistorial.forEachIndexed { index, item ->
-                    val bgColor = if (index % 2 == 0) Color(0xAAFFFFFF).copy(alpha = 0.8f) else Color(0xCCFFFFFF)
-                    Row(
-                        modifier = Modifier
-                            .background(bgColor)
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(item.idhistorial.toString(), modifier = Modifier.width(130.dp), color = Color.DarkGray)
-                        Text(item.fotopaciente, modifier = Modifier.width(130.dp), color = Color.DarkGray)
-                        Text(item.alergias, modifier = Modifier.width(130.dp), color = Color.DarkGray)
-                        Text(item.cirugias, modifier = Modifier.width(130.dp), color = Color.DarkGray)
-                        Text(item.diagnosticosprevios, modifier = Modifier.width(130.dp), color = Color.DarkGray)
-                        Button(
-                            onClick = {
-                                coroutineScope.launch {
-                                    try {
-                                        // Call your API delete method using the item's ID
-                                        val response = api.eliminarHistorialMedico(item.idhistorial)
-                                        if (response.isSuccessful) {
-                                            // Refresh the table data from the database
-                                            listaHistorial = api.buscarHistorialMedico("")
-                                        }
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                    }
-                                }
-                            },
-                            modifier = Modifier.width(100.dp)
-                        ) {
-                            Text("Borrar")
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(
-                onClick = { navController.navigate("MenuContent") },
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Regresar al Menú")
-            }
-        }
-    }
-}
-
-
-
-
-
-
 @Composable
 fun HabitacionContent(
     navController: NavHostController,
@@ -814,159 +1051,6 @@ fun HabitacionContent(
             Button(
                 onClick = { navController.navigate("MenuContent") },
                 colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Regresar al Menú")
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun HistorialFormContent(
-    navController: NavHostController,
-    modifier: Modifier = Modifier
-) {
-
-    val coroutineScope = rememberCoroutineScope()
-
-    val context = LocalContext.current
-    var idHistorial by remember { mutableStateOf("") }
-    var alergias by remember { mutableStateOf("") }
-    var cirugias by remember { mutableStateOf("") }
-    var diagnosticos by remember { mutableStateOf("") }
-
-    var imageUri by remember { mutableStateOf<Uri?>(null) }
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        imageUri = uri
-        // TODO: Assign the uri string to your state/model variable if needed
-    }
-    Box(
-        modifier = modifier.fillMaxSize()
-    ) {
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.Start,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = "Formulario de Historial",
-                fontSize = 30.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = Color.Black,
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .padding(bottom = 24.dp)
-            )
-
-            Text(text = "CURP:")
-            TextField(
-                value = idHistorial,
-                onValueChange = { idHistorial = it },
-                placeholder = { Text("Ej. H-1234") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp)
-            )
-            Text(text = "Alergias:")
-            TextField(
-                value = alergias,
-                onValueChange = { alergias = it },
-                placeholder = { Text("Ej. Pollen") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-            )
-            Text(text = "Cirugias:")
-            TextField(
-                value = cirugias,
-                onValueChange = { cirugias = it },
-                placeholder = { Text("Ej. Vesectomia") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp)
-            )
-            Text(text = "Diagnosticos:")
-            TextField(
-                value = diagnosticos,
-                onValueChange = { diagnosticos = it },
-                placeholder = { Text("Ej. Daños en las cavidades oculares") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp)
-            )
-
-
-
-            // Below your Text(text = "Imagen Nueva:")
-            Button(
-                onClick = {
-                    // Filter for images; you can use "*/*" for any file type
-                    launcher.launch("image/*")
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp)
-            ) {
-                Text(text = if (imageUri == null) "Seleccionar Archivo" else "Archivo Seleccionado ✓")
-            }
-
-// Optional: Display the file path or a small preview if selected
-            if (imageUri != null) {
-                Text(
-                    text = "URI: $imageUri",
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(
-                onClick = {
-                    if (idHistorial.isNotBlank() && alergias.isNotBlank()) {
-                        coroutineScope.launch {
-                            try {
-                                // Call your API to insert into phpMyAdmin
-                                val response = api.registrarHistorialMedico(
-                                    fotopaciente = if (imageUri != null) imageUri.toString() else "foto1.jpg",
-                                    alergias = alergias,
-                                    cirugias = cirugias,
-                                    diagnositocsprevios = diagnosticos,
-                                    cartillamedica = "Completa", // or map to a form field if you have one
-                                    curp = idHistorial // using your idHistorial field for curp based on your form text
-                                )
-
-                                if (response.isSuccessful) {
-                                    Toast.makeText(context, "Guardado con éxito en la Base de Datos", Toast.LENGTH_SHORT).show()
-                                    navController.popBackStack()
-                                } else {
-                                    Toast.makeText(context, "Error al guardar en el servidor", Toast.LENGTH_SHORT).show()
-                                }
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                                Toast.makeText(context, "Error de conexión: ${e.message}", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    } else {
-                        Toast.makeText(context, "Falta uno o mas campos para llenar", Toast.LENGTH_SHORT).show()
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Yellow)
-            ) {
-                Text("Guardar Paciente")
-            }
-
-            Button(
-                onClick = { navController.navigate("MenuContent") },
-                colors = ButtonDefaults.buttonColors(containerColor = Color.Blue),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Regresar al Menú")
